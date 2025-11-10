@@ -93,7 +93,7 @@ struct Grid initGrid(int width, int height) {
 // initialize markers array
 struct Marker* initMarkers(int maxMarkers, int *noMarkers, struct Grid grid){
     //random no. markers generated(min 1)
-    int numMarkers =  3 + rand() % (maxMarkers-2);
+    int numMarkers =  5 + rand() % (maxMarkers-4);
     *noMarkers = numMarkers;
     struct Marker *markers = calloc(numMarkers, sizeof(struct Marker)); //zero-initialized
 
@@ -117,7 +117,7 @@ struct Marker* initMarkers(int maxMarkers, int *noMarkers, struct Grid grid){
 
 
 void drawMarker(int x, int y){
-                foreground();
+    foreground();
     setColour(red);
     fillOval(
     x * TILE_WIDTH + MARGIN + TILE_WIDTH/2 - OVAL_SIZE/2,
@@ -126,13 +126,6 @@ void drawMarker(int x, int y){
     OVAL_SIZE
     );
     setColour(black);
-}
-
-
-void drawRobot(int x, int y){
-    foreground();
-    setColour(blue);
-    fillRect(x * TILE_WIDTH + MARGIN + 10, y * TILE_HEIGHT + MARGIN + 10, TILE_WIDTH - 20, TILE_HEIGHT - 20);
 }
 
 
@@ -265,6 +258,53 @@ void fillGaps(struct Grid grid){
     }
 }
 
+void drawRobot(struct Robot *robot){
+    foreground();
+    setColour(blue);
+    int cx = robot->x * TILE_WIDTH + MARGIN + TILE_WIDTH / 2;
+    int cy = robot->y * TILE_HEIGHT + MARGIN + TILE_HEIGHT / 2;
+    int size = TILE_WIDTH / 2;
+    int vx[3], vy[3];
+    
+    switch(robot->dir){
+        case NORTH:
+            vx[0] = cx;
+            vy[0] = cy - size/2;
+            vx[1] = cx - size/2;
+            vy[1] = cy + size/2;
+            vx[2] = cx + size/2;
+            vy[2] = cy + size/2;
+            break;
+        case EAST:
+            vx[0] = cx + size/2;
+            vy[0] = cy;
+            vx[1] = cx - size/2;
+            vy[1] = cy - size/2;
+            vx[2] = cx - size/2;
+            vy[2] = cy + size/2;
+            break;
+        case SOUTH:
+            vx[0] = cx;
+            vy[0] = cy + size/2;
+            vx[1] = cx - size/2;
+            vy[1] = cy - size/2;
+            vx[2] = cx + size/2;
+            vy[2] = cy - size/2;
+            break;
+        case WEST:
+            vx[0] = cx - size/2;
+            vy[0] = cy;
+            vx[1] = cx + size/2;
+            vy[1] = cy - size/2;
+            vx[2] = cx + size/2;
+            vy[2] = cy + size/2;
+            break;
+    }
+    
+    fillPolygon(3, vx, vy);
+    setColour(black);
+}
+
 
 //draws grid
 void drawGrid(struct Grid grid, struct Robot *robot){
@@ -300,9 +340,10 @@ void drawGrid(struct Grid grid, struct Robot *robot){
     }
 
     //draw robot
-    drawRobot(robot->x, robot->y);
+    drawRobot(robot);
 
 }
+
 
 
 void redrawGrid(struct Grid grid, struct Robot *robot, struct Marker *markers, int noMarkers){
@@ -313,7 +354,7 @@ void redrawGrid(struct Grid grid, struct Robot *robot, struct Marker *markers, i
             drawMarker(markers[i].x, markers[i].y);
         }
     }
-    drawRobot(robot->x, robot->y);
+    drawRobot(robot);
 }
 
 
@@ -424,6 +465,43 @@ void update(struct Robot *robot, struct Grid grid){
 
 }
 
+int dfs(struct Robot *robot, struct Grid grid, int **visited, struct Marker *markers, int noMarkers) {
+    visited[robot->y][robot->x] = 1;
+
+    if(pickUpMarker(robot, grid, noMarkers)) {
+        return 1;
+    }
+
+    int dirs[4] = {NORTH, EAST, SOUTH, WEST};
+    for(int i = 0; i < 4; i++) {
+        int targetDir = dirs[i];
+        while(robot->dir != targetDir) {
+            right(robot);
+        }
+
+        if(canMoveForward(robot, grid)) {
+            int prevX = robot->x;
+            int prevY = robot->y;
+
+            forward(robot, grid);
+            redrawGrid(grid, robot, markers, noMarkers);
+
+            if(!visited[robot->y][robot->x]) {
+                if(dfs(robot, grid, visited, markers, noMarkers)) {
+                    return 1;
+                }
+            }
+
+            // Backtrack
+            robot->x = prevX;
+            robot->y = prevY;
+            redrawGrid(grid, robot, markers, noMarkers);
+        }
+    }
+
+    return 0;
+}
+
 
 int main(int argc, char **argv){
     srand(time(NULL));
@@ -437,7 +515,7 @@ int main(int argc, char **argv){
     robot = initRobot(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]));
     grid = initGrid(atoi(argv[4]), atoi(argv[5]));
     genClusters(grid);
-    fillGaps(grid);
+    //fillGaps(grid);
     markers = initMarkers(atoi(argv[6]), &noMarkers, grid);
 
     //set marker tiles
@@ -448,15 +526,17 @@ int main(int argc, char **argv){
 
     drawGrid(grid, robot);
 
-    sleep(1000);    
-    update(robot, grid);
-    redrawGrid(grid, robot, markers, noMarkers);
-    for(int i = 0;i<3;i++){
-        sleep(1000);    
-        update(robot, grid);
-        redrawGrid(grid, robot, markers, noMarkers);
+    int **visited = malloc(grid.height * sizeof(int *));
+    for(int i = 0; i < grid.height; i++) {
+        visited[i] = calloc(grid.width, sizeof(int));
     }
-    
+
+    dfs(robot, grid, visited, markers, noMarkers);
+
+    for(int i = 0; i < grid.height; i++) {
+        free(visited[i]);
+    }
+    free(visited);
 
     
     
