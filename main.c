@@ -8,6 +8,10 @@
 #define EMPTY 0
 #define OBS 1
 #define MARK 2
+#define TILE_WIDTH 40
+#define TILE_HEIGHT 40
+#define MARGIN 10
+#define OVAL_SIZE 20
 
 //represents robot: x,y mark position in grid; dir stores direction(0=N, 1=E, 2=S, 3=W); markCount is no. carried markers
 struct Robot{
@@ -17,10 +21,12 @@ struct Robot{
     int markCount;
 };
 
+
 struct Tile{
     int type; //0=empty, 1=obstacle, 2=marker
     int collected;
 };
+
 
 //represents grid: width and height dimensions, and pointer to array of grid tiles
 struct Grid{
@@ -29,11 +35,13 @@ struct Grid{
     struct Tile **grid;
 };
 
+
 //represents marker: x,y position and collected(0=F, 1=T)
 struct Marker{
     int x;
     int y;
 };
+
 
 struct Robot* initRobot(int x, int y, int dir){
     struct Robot *robot = malloc(sizeof(struct Robot));
@@ -47,9 +55,11 @@ struct Robot* initRobot(int x, int y, int dir){
     robot->x = x;
     robot->y = y;
     robot->dir = dir;
+    robot->markCount = 0;
 
     return robot;
 }
+
 
 //initializes grid, 0=empty, 1=obstacle, 2=marker
 struct Grid initGrid(int width, int height) {
@@ -74,6 +84,7 @@ struct Grid initGrid(int width, int height) {
     return grid;
 }
 
+
 // initialize markers array
 struct Marker* initMarkers(int maxMarkers, int *noMarkers, struct Grid grid){
     //random no. markers generated(min 1)
@@ -94,52 +105,77 @@ struct Marker* initMarkers(int maxMarkers, int *noMarkers, struct Grid grid){
 
 }
 
+
+void drawMarker(int x, int y){
+                foreground();
+    setColour(red);
+    fillOval(
+    x * TILE_WIDTH + MARGIN + TILE_WIDTH/2 - OVAL_SIZE/2,
+    y * TILE_HEIGHT + MARGIN + TILE_HEIGHT/2 - OVAL_SIZE/2,
+    OVAL_SIZE,
+    OVAL_SIZE
+    );
+    setColour(black);
+}
+
+
+void drawRobot(int x, int y){
+    foreground();
+    setColour(blue);
+    fillRect(x * TILE_WIDTH + MARGIN + 10, y * TILE_HEIGHT + MARGIN + 10, TILE_WIDTH - 20, TILE_HEIGHT - 20);
+}
+
+
 //draws grid
-void drawGrid(struct Grid grid){
-    int tileWidth = 40;
-    int tileHeight = 40;
-    int margin = 10;
-    int ovalSize = 20;
+void drawGrid(struct Grid grid, struct Robot *robot){
 
     //set window size
-    setWindowSize(tileWidth * grid.width + 2 * margin, tileHeight * grid.height + 2 * margin);
+    setWindowSize(TILE_WIDTH * grid.width + 2 * MARGIN, TILE_HEIGHT * grid.height + 2 * MARGIN);
 
     //draws walls
-    fillRect(0, 0, tileWidth * grid.width + margin, margin);
-    fillRect(0, 0, margin, tileHeight * grid.height + margin);
-    fillRect(0, tileHeight * grid.height + margin, tileWidth * grid.width + margin, margin);
-    fillRect(tileWidth * grid.width + margin, 0, margin, tileHeight * grid.height + 2 * margin);
+    background();
+    fillRect(0, 0, TILE_WIDTH * grid.width + MARGIN, MARGIN);
+    fillRect(0, 0, MARGIN, TILE_HEIGHT * grid.height + MARGIN);
+    fillRect(0, TILE_HEIGHT * grid.height + MARGIN, TILE_WIDTH * grid.width + MARGIN, MARGIN);
+    fillRect(TILE_WIDTH * grid.width + MARGIN, 0, MARGIN, TILE_HEIGHT * grid.height + 2 * MARGIN);
 
     //draw grid
     for(int w = 0; w < grid.width; w++){
 
         for(int h = 0; h < grid.height; h++){
-            
-            drawRect(w * tileWidth + margin, h * tileHeight+margin, tileWidth, tileHeight);
+            background();
+            drawRect(w * TILE_WIDTH + MARGIN, h * TILE_HEIGHT + MARGIN, TILE_WIDTH, TILE_HEIGHT);
             
             //draw markers and obstacles
             switch(grid.grid[h][w].type){
                 case OBS:
-                    fillRect(w * tileWidth + margin + 5, h * tileHeight+margin + 5, tileWidth - 10, tileHeight - 10);
+                    fillRect(w * TILE_WIDTH + MARGIN + 5, h * TILE_HEIGHT + MARGIN + 5, TILE_WIDTH - 10, TILE_HEIGHT - 10);
                     break;
 
                 case MARK:
-                    setColour(red);
-                    fillOval(
-                    w * tileWidth + margin + tileWidth/2 - ovalSize/2,
-                    h * tileHeight + margin + tileHeight/2 - ovalSize/2,
-                    ovalSize,
-                    ovalSize
-                    );
-                    setColour(black);
+                    drawMarker(w, h);
                     break;
-                }
-            
+                }  
         }
-        
     }
 
+    //draw robot
+    drawRobot(robot->x, robot->y);
+
 }
+
+
+void redrawGrid(struct Grid grid, struct Robot *robot, struct Marker *markers, int noMarkers){
+    foreground();
+    clear();
+    for (int i = 0; i < noMarkers; i++) {
+        if (grid.grid[markers[i].y][markers[i].x].collected == 0){
+            drawMarker(markers[i].x, markers[i].y);
+        }
+    }
+    drawRobot(robot->x, robot->y);
+}
+
 
 void left(struct Robot *robot){
     //update direction
@@ -148,6 +184,7 @@ void left(struct Robot *robot){
     //redraw
 }
 
+
 void right(struct Robot *robot){
     //update direction
     robot->dir = (robot->dir + 1)%4;
@@ -155,6 +192,8 @@ void right(struct Robot *robot){
     //redraw
 }
 
+
+//only used in pickUpMarker()
 int atMarker(struct Robot *robot, struct Grid grid){
     if (grid.grid[robot->y][robot->x].type == MARK){
         return 1;
@@ -162,6 +201,8 @@ int atMarker(struct Robot *robot, struct Grid grid){
     return 0;
 }
 
+
+//only used in forward
 int canMoveForward(struct Robot *robot, struct Grid grid){
     int x = robot->x;
     int y = robot->y;
@@ -190,6 +231,7 @@ int canMoveForward(struct Robot *robot, struct Grid grid){
     return 0;
 }
 
+
 void forward(struct Robot *robot, struct Grid grid){
     //update position
     if(canMoveForward(robot, grid)){
@@ -215,17 +257,32 @@ void forward(struct Robot *robot, struct Grid grid){
     //redraw
 }
 
-void pickUpMarker(struct Robot *robot, struct Grid grid){
+
+//picks up marker and returns true if all markers have been picked up
+int pickUpMarker(struct Robot *robot, struct Grid grid, int noMarkers){
     if(atMarker(robot, grid) && grid.grid[robot->y][robot->x].collected == 0){
         grid.grid[robot->y][robot->x].type = MARK;
         grid.grid[robot->y][robot->x].collected = 1;
+        robot->markCount += 1;
+
+        if (robot->markCount == noMarkers){
+            return 1;
+        }
     }
+    return 0;
 }
+
 
 void dropMarker(){
 
 }
 
+
+void update(struct Robot *robot, struct Grid grid){
+    forward(robot, grid);
+
+
+}
 
 
 int main(int argc, char **argv){
@@ -233,8 +290,11 @@ int main(int argc, char **argv){
     struct Grid grid;
     struct Marker *markers = NULL;
     int noMarkers;
+    int p;
+    int q;
 
-    //initialize with command line arguements
+
+    //initialize with command line arguements: robot x, robot y, dir, grid width, grid height, no. markers
     if (argc == 7){
         robot = initRobot(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]));
         grid = initGrid(atoi(argv[4]), atoi(argv[5]));
@@ -244,10 +304,25 @@ int main(int argc, char **argv){
     //set marker tiles
     for (int i = 0; i < noMarkers; i++) {
         grid.grid[markers[i].y][markers[i].x].type = MARK;
+        p = markers[i].x;
+        q = markers[i].y;
     
     }
 
-    drawGrid(grid);
+    drawGrid(grid, robot);
+    sleep(1000);    
+    update(robot, grid);
+    redrawGrid(grid, robot, markers, noMarkers);
+    grid.grid[q][p].collected = 1;
+    for(int i = 0;i<3;i++){
+        sleep(1000);    
+        update(robot, grid);
+        redrawGrid(grid, robot, markers, noMarkers);
+    }
+    
+
+    
+    
 }
 
 
