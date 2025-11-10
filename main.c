@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "graphics.h"
+#include <time.h>
 #define NORTH 0
 #define EAST 1
 #define SOUTH 2
@@ -21,10 +22,12 @@ struct Robot{
     int markCount;
 };
 
-
+//represents tile: type, collected, x, y
 struct Tile{
     int type; //0=empty, 1=obstacle, 2=marker
     int collected;
+    int x;
+    int y;
 };
 
 
@@ -78,6 +81,8 @@ struct Grid initGrid(int width, int height) {
         for (int j = 0; j < width; j++) {
             grid.grid[i][j].type = 0;
             grid.grid[i][j].collected = 0;
+            grid.grid[i][j].x = i;
+            grid.grid[i][j].y = j;
         }
     }
 
@@ -95,9 +100,14 @@ struct Marker* initMarkers(int maxMarkers, int *noMarkers, struct Grid grid){
 
     //assigns random position for each marker
     for (int i = 0; i < numMarkers; i++) {
-        markers[i].x = rand() % grid.width;
-        markers[i].y = rand() % grid.height;
-        message("hello");
+        int x;
+        int y;
+        do{
+            x = rand() % grid.width;
+            y = rand() % grid.width;
+            markers[i].x = x;
+            markers[i].y = y;
+        }while(grid.grid[y][x].type == OBS);
         
     }
 
@@ -125,6 +135,41 @@ void drawRobot(int x, int y){
     fillRect(x * TILE_WIDTH + MARGIN + 10, y * TILE_HEIGHT + MARGIN + 10, TILE_WIDTH - 20, TILE_HEIGHT - 20);
 }
 
+struct Tile *randomNeighbor(int x, int y, struct Grid grid, int *found) {
+    struct Tile *neighbors[4]; // temporary array of pointers
+    int n = 0;
+
+    if(x > 0 && grid.grid[y][x-1].type == 0) {
+        struct Tile *t = &grid.grid[y][x-1];
+        neighbors[n++] = t;
+    }
+
+    if(x < grid.width-1 && grid.grid[y][x+1].type == 0) {
+        struct Tile *t = &grid.grid[y][x+1];
+        neighbors[n++] = t;
+    }
+
+    if(y > 0 && grid.grid[y-1][x].type == 0) {
+        struct Tile *t = &grid.grid[y-1][x];
+        neighbors[n++] = t;
+    }
+
+    if(y < grid.height-1 && grid.grid[y+1][x].type == 0) {
+        struct Tile *t = &grid.grid[y+1][x];
+        neighbors[n++] = t;
+    }
+
+    if(n == 0) {
+        *found = 0;
+        return NULL;
+    }
+
+    *found = 1;
+    int idx = rand() % n;
+    struct Tile *result = neighbors[idx];
+
+    return result; // caller must free this Tile
+}
 
 //draws grid
 void drawGrid(struct Grid grid, struct Robot *robot){
@@ -138,6 +183,47 @@ void drawGrid(struct Grid grid, struct Robot *robot){
     fillRect(0, 0, MARGIN, TILE_HEIGHT * grid.height + MARGIN);
     fillRect(0, TILE_HEIGHT * grid.height + MARGIN, TILE_WIDTH * grid.width + MARGIN, MARGIN);
     fillRect(TILE_WIDTH * grid.width + MARGIN, 0, MARGIN, TILE_HEIGHT * grid.height + 2 * MARGIN);
+
+    //generate obstacle clusters
+    int min = 3;
+    int max = 8;
+    int count = min + rand() % (max - min + 1);
+    int size = ((grid.width * grid.height) * 0.4)/count; //want clusters to cover about 40%
+
+    for(int i = 0; i < count; i++){
+    int index = 0;
+    struct Tile **clusterTiles = calloc(size, sizeof(struct Tile*));
+
+    // pick random starting tile along a side
+    int x, y;
+    int side = rand() % 4;
+    if(side < 2){ // top or bottom
+        y = (side == 0) ? 0 : grid.height - 1;
+        x = rand() % grid.width;
+    } else {     // left or right
+        x = (side == 2) ? 0 : grid.width - 1;
+        y = rand() % grid.height;
+    }
+
+    grid.grid[y][x].type = OBS;
+    clusterTiles[index++] = &grid.grid[y][x];
+
+    // grow the cluster
+    while(index < size){
+        int idx = rand() % index;
+        struct Tile *choice = clusterTiles[idx];
+
+        int found;
+        struct Tile *neighbor = randomNeighbor(choice->x, choice->y, grid, &found);
+        if(!found) break;
+
+        neighbor->type = OBS;
+        clusterTiles[index++] = neighbor;
+    }
+
+    free(clusterTiles);
+}
+
 
     //draw grid
     for(int w = 0; w < grid.width; w++){
@@ -236,19 +322,19 @@ void forward(struct Robot *robot, struct Grid grid){
     //update position
     if(canMoveForward(robot, grid)){
         switch(robot->dir){
-            case 0:
-                robot->y += 1;
+            case NORTH:
+                robot->y -= 1;
                 break;
             
-            case 1:
+            case EAST:
                 robot->x += 1;
                 break;
 
-            case 2:
-                robot->y -= 1;
+            case SOUTH:
+                robot->y += 1;
                 break;
 
-            case 3:
+            case WEST:
                 robot->x -= 1;
                 break;
         }
@@ -286,12 +372,11 @@ void update(struct Robot *robot, struct Grid grid){
 
 
 int main(int argc, char **argv){
-     struct Robot *robot = NULL;
+    srand(time(NULL));
+    struct Robot *robot = NULL;
     struct Grid grid;
     struct Marker *markers = NULL;
     int noMarkers;
-    int p;
-    int q;
 
 
     //initialize with command line arguements: robot x, robot y, dir, grid width, grid height, no. markers
@@ -304,8 +389,6 @@ int main(int argc, char **argv){
     //set marker tiles
     for (int i = 0; i < noMarkers; i++) {
         grid.grid[markers[i].y][markers[i].x].type = MARK;
-        p = markers[i].x;
-        q = markers[i].y;
     
     }
 
@@ -313,7 +396,6 @@ int main(int argc, char **argv){
     sleep(1000);    
     update(robot, grid);
     redrawGrid(grid, robot, markers, noMarkers);
-    grid.grid[q][p].collected = 1;
     for(int i = 0;i<3;i++){
         sleep(1000);    
         update(robot, grid);
