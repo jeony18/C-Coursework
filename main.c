@@ -281,6 +281,7 @@ void drawGrid(struct Grid grid, struct Robot *robot){
     for(int w = 0; w < grid.width; w++){
 
         for(int h = 0; h < grid.height; h++){
+            background();
             drawRect(w * TILE_WIDTH + MARGIN, h * TILE_HEIGHT + MARGIN, TILE_WIDTH, TILE_HEIGHT);
             
             //draw markers as red circles and obstacles as black squares
@@ -292,7 +293,6 @@ void drawGrid(struct Grid grid, struct Robot *robot){
                 case MARK:
                     drawMarker(w, h);
                     break;
-                    background();
                 }  
         }
     }
