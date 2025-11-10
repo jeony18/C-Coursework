@@ -374,23 +374,23 @@ void right(struct Robot *robot){
 }
 
 
-//only used in pickUpMarker()
+
 int atMarker(struct Robot *robot, struct Grid grid){
-    if (grid.grid[robot->y][robot->x].type == MARK){
+    if (grid.grid[robot->y][robot->x].type == MARK && grid.grid[robot->y][robot->x].collected == 0){
         return 1;
     }
     return 0;
 }
 
 
-//only used in forward
+
 int canMoveForward(struct Robot *robot, struct Grid grid){
     int x = robot->x;
     int y = robot->y;
-
+    
     switch(robot->dir){
         case 0:
-            y += 1;
+            y -= 1;
             break;
         
         case 1:
@@ -398,23 +398,21 @@ int canMoveForward(struct Robot *robot, struct Grid grid){
             break;
 
         case 2:
-            y -= 1;
+            y += 1;
             break;
 
         case 3:
             x -= 1;
             break;
     }
-
-    if(grid.grid[y][x].type != OBS){
-        return 1;
+    if(x >= 0 && x < grid.width && y >= 0 && y < grid.height && grid.grid[y][x].type != OBS){
+    return 1;
     }
     return 0;
 }
 
 
 void forward(struct Robot *robot, struct Grid grid){
-    //update position
     if(canMoveForward(robot, grid)){
         switch(robot->dir){
             case NORTH:
@@ -434,23 +432,13 @@ void forward(struct Robot *robot, struct Grid grid){
                 break;
         }
     }
-
-    //redraw
 }
 
-
 //picks up marker and returns true if all markers have been picked up
-int pickUpMarker(struct Robot *robot, struct Grid grid, int noMarkers){
-    if(atMarker(robot, grid) && grid.grid[robot->y][robot->x].collected == 0){
-        grid.grid[robot->y][robot->x].type = MARK;
-        grid.grid[robot->y][robot->x].collected = 1;
-        robot->markCount += 1;
-
-        if (robot->markCount == noMarkers){
-            return 1;
-        }
-    }
-    return 0;
+void pickUpMarker(struct Robot *robot, struct Grid grid){
+    grid.grid[robot->y][robot->x].collected = 1;
+    robot->markCount += 1;
+    
 }
 
 
@@ -459,87 +447,102 @@ void dropMarker(){
 }
 
 
-void update(struct Robot *robot, struct Grid grid){
-    forward(robot, grid);
-
-
+void turnTo(struct Robot *robot, int targetDir){
+    while(robot->dir != targetDir){
+        right(robot);
+    }
 }
 
-int dfs(struct Robot *robot, struct Grid grid, int **visited, struct Marker *markers, int noMarkers) {
+
+int dfs(struct Robot *robot, struct Grid grid, int **visited, struct Marker *markers, int noMarkers){
+    struct Tile stack[grid.width * grid.height];
+    int top = 0;
+    stack[top].x = robot->x;
+    stack[top].y = robot->y;
     visited[robot->y][robot->x] = 1;
 
-    if(pickUpMarker(robot, grid, noMarkers)) {
-        return 1;
-    }
+    while(top >= 0){
+        struct Tile current = stack[top];
+        robot->x = current.x;
+        robot->y = current.y;
+        redrawGrid(grid, robot, markers, noMarkers);
+        sleep(100);
 
-    int dirs[4] = {NORTH, EAST, SOUTH, WEST};
-    for(int i = 0; i < 4; i++) {
-        int targetDir = dirs[i];
-        while(robot->dir != targetDir) {
-            right(robot);
+        if(atMarker(robot, grid)){
+            pickUpMarker(robot, grid);
+            redrawGrid(grid, robot, markers, noMarkers);
+            sleep(100);
+
+            if(robot->markCount == noMarkers) break;
         }
 
-        if(canMoveForward(robot, grid)) {
-            int prevX = robot->x;
-            int prevY = robot->y;
-
-            forward(robot, grid);
-            redrawGrid(grid, robot, markers, noMarkers);
-
-            if(!visited[robot->y][robot->x]) {
-                if(dfs(robot, grid, visited, markers, noMarkers)) {
-                    return 1;
+        int moved = 0;
+        for(int i = 0; i < 4; i++){
+            while(robot->dir != i){
+                right(robot);
+            }
+            if(canMoveForward(robot, grid)){
+                int nx = robot->x;
+                int ny = robot->y;
+                switch(robot->dir){
+                    case NORTH:
+                        ny -= 1;
+                        break;
+                    case EAST:
+                        nx += 1;
+                        break;
+                    case SOUTH:
+                        ny += 1;
+                        break;
+                    case WEST:
+                        nx -= 1;
+                        break;
+                }
+                if(!visited[ny][nx] && grid.grid[ny][nx].type != OBS){
+                    forward(robot, grid);
+                    visited[ny][nx] = 1;
+                    stack[++top].x = nx;
+                    stack[top].y = ny;
+                    moved = 1;
+                    break;
                 }
             }
-
-            // Backtrack
-            robot->x = prevX;
-            robot->y = prevY;
-            redrawGrid(grid, robot, markers, noMarkers);
+        }
+        if(!moved){
+            top--;
         }
     }
-
     return 0;
 }
 
 
+
 int main(int argc, char **argv){
     srand(time(NULL));
-    struct Robot *robot = NULL;
-    struct Grid grid;
-    struct Marker *markers = NULL;
-    int noMarkers;
-
-
-    //initialize with command line arguements: robot x, robot y, dir, grid width, grid height, no. markers
-    robot = initRobot(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]));
-    grid = initGrid(atoi(argv[4]), atoi(argv[5]));
+    struct Robot *robot = initRobot(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]));
+    struct Grid grid = initGrid(atoi(argv[4]), atoi(argv[5]));
     genClusters(grid);
-    //fillGaps(grid);
-    markers = initMarkers(atoi(argv[6]), &noMarkers, grid);
 
-    //set marker tiles
-    for (int i = 0; i < noMarkers; i++) {
+    int noMarkers;
+    struct Marker *markers = initMarkers(atoi(argv[6]), &noMarkers, grid);
+
+    for(int i = 0; i < noMarkers; i++){
         grid.grid[markers[i].y][markers[i].x].type = MARK;
-    
     }
 
     drawGrid(grid, robot);
 
     int **visited = malloc(grid.height * sizeof(int *));
-    for(int i = 0; i < grid.height; i++) {
+    for(int i = 0; i < grid.height; i++){
         visited[i] = calloc(grid.width, sizeof(int));
     }
 
-    dfs(robot, grid, visited, markers, noMarkers);
+    while(robot->markCount < noMarkers){
+        dfs(robot, grid, visited, markers, noMarkers);
+    }
 
-    for(int i = 0; i < grid.height; i++) {
+    for(int i = 0; i < grid.height; i++){
         free(visited[i]);
     }
     free(visited);
-
-    
-    
 }
-
-
