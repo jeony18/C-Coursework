@@ -81,8 +81,8 @@ struct Grid initGrid(int width, int height) {
         for (int j = 0; j < width; j++) {
             grid.grid[i][j].type = 0;
             grid.grid[i][j].collected = 0;
-            grid.grid[i][j].x = i;
-            grid.grid[i][j].y = j;
+            grid.grid[i][j].x = j;
+            grid.grid[i][j].y = i;
         }
     }
 
@@ -93,7 +93,7 @@ struct Grid initGrid(int width, int height) {
 // initialize markers array
 struct Marker* initMarkers(int maxMarkers, int *noMarkers, struct Grid grid){
     //random no. markers generated(min 1)
-    int numMarkers = 1 + rand() % maxMarkers;
+    int numMarkers =  3 + rand() % (maxMarkers-2);
     *noMarkers = numMarkers;
     struct Marker *markers = calloc(numMarkers, sizeof(struct Marker)); //zero-initialized
 
@@ -135,6 +135,7 @@ void drawRobot(int x, int y){
     fillRect(x * TILE_WIDTH + MARGIN + 10, y * TILE_HEIGHT + MARGIN + 10, TILE_WIDTH - 20, TILE_HEIGHT - 20);
 }
 
+
 struct Tile *randomNeighbor(int x, int y, struct Grid grid, int *found) {
     struct Tile *neighbors[4]; // temporary array of pointers
     int n = 0;
@@ -171,6 +172,100 @@ struct Tile *randomNeighbor(int x, int y, struct Grid grid, int *found) {
     return result; // caller must free this Tile
 }
 
+
+//generate obstacle clusters
+void genClusters(struct Grid grid){
+    int minClusters = 3;
+    int maxClusters = 8;
+    int clusterCount = minClusters + rand() % (maxClusters - minClusters + 1);
+    int totalTiles = grid.width * grid.height;
+    int targetTilesPerCluster = (totalTiles * 0.4) / clusterCount;
+
+    for(int c = 0; c < clusterCount; c++){
+        int index = 0;
+        struct Tile **clusterTiles = calloc(targetTilesPerCluster, sizeof(struct Tile*));
+        struct Tile **frontier = calloc(targetTilesPerCluster, sizeof(struct Tile*));
+        int frontierCount = 0;
+
+        int x, y;
+        int side = rand() % 4;
+        if(side < 2){
+            y = (side == 0) ? 0 : grid.height - 1;
+            x = rand() % grid.width;
+        } else {
+            x = (side == 2) ? 0 : grid.width - 1;
+            y = rand() % grid.height;
+        }
+
+        grid.grid[y][x].type = OBS;
+        clusterTiles[index++] = &grid.grid[y][x];
+        frontier[frontierCount++] = &grid.grid[y][x];
+
+        while(index < targetTilesPerCluster && frontierCount > 0){
+            int fidx = rand() % frontierCount;
+            struct Tile *choice = frontier[fidx];
+
+            int found;
+            struct Tile *neighbor = randomNeighbor(choice->x, choice->y, grid, &found);
+
+            if(!found){
+                frontier[fidx] = frontier[--frontierCount];
+                continue;
+            }
+
+            neighbor->type = OBS;
+            clusterTiles[index++] = neighbor;
+            frontier[frontierCount++] = neighbor;
+        }
+
+        free(clusterTiles);
+        free(frontier);
+    }
+}
+
+int closed(struct Tile tile, struct Grid grid) {
+    if(tile.x > 0 && grid.grid[tile.y][tile.x - 1].type != OBS) return 0;
+    if(tile.x < grid.width - 1 && grid.grid[tile.y][tile.x + 1].type != OBS) return 0;
+    if(tile.y > 0 && grid.grid[tile.y - 1][tile.x].type != OBS) return 0;
+    if(tile.y < grid.height - 1 && grid.grid[tile.y + 1][tile.x].type != OBS) return 0;
+
+    return 1; 
+}
+
+void fillGaps(struct Grid grid){
+    int width = grid.width;
+    int height = grid.height;
+
+    for (int x = 0; x < width; x++) {
+        int y = 0;
+        if(closed(grid.grid[y][x], grid)){
+            grid.grid[y][x].type = OBS;
+        }
+    }
+
+    for (int y = 1; y < height; y++) {
+        int x = width - 1;
+        if(closed(grid.grid[y][x], grid)){
+            grid.grid[y][x].type = OBS;
+        }
+    }
+
+    for (int x = width - 2; x >= 0; x--) {
+        int y = height - 1;
+        if(closed(grid.grid[y][x], grid)){
+            grid.grid[y][x].type = OBS;
+        }
+    }
+
+    for (int y = height - 2; y > 0; y--) {
+        int x = 0;
+        if(closed(grid.grid[y][x], grid)){
+            grid.grid[y][x].type = OBS;
+        }
+    }
+}
+
+
 //draws grid
 void drawGrid(struct Grid grid, struct Robot *robot){
 
@@ -183,47 +278,6 @@ void drawGrid(struct Grid grid, struct Robot *robot){
     fillRect(0, 0, MARGIN, TILE_HEIGHT * grid.height + MARGIN);
     fillRect(0, TILE_HEIGHT * grid.height + MARGIN, TILE_WIDTH * grid.width + MARGIN, MARGIN);
     fillRect(TILE_WIDTH * grid.width + MARGIN, 0, MARGIN, TILE_HEIGHT * grid.height + 2 * MARGIN);
-
-    //generate obstacle clusters
-    int min = 3;
-    int max = 8;
-    int count = min + rand() % (max - min + 1);
-    int size = ((grid.width * grid.height) * 0.4)/count; //want clusters to cover about 40%
-
-    for(int i = 0; i < count; i++){
-    int index = 0;
-    struct Tile **clusterTiles = calloc(size, sizeof(struct Tile*));
-
-    // pick random starting tile along a side
-    int x, y;
-    int side = rand() % 4;
-    if(side < 2){ // top or bottom
-        y = (side == 0) ? 0 : grid.height - 1;
-        x = rand() % grid.width;
-    } else {     // left or right
-        x = (side == 2) ? 0 : grid.width - 1;
-        y = rand() % grid.height;
-    }
-
-    grid.grid[y][x].type = OBS;
-    clusterTiles[index++] = &grid.grid[y][x];
-
-    // grow the cluster
-    while(index < size){
-        int idx = rand() % index;
-        struct Tile *choice = clusterTiles[idx];
-
-        int found;
-        struct Tile *neighbor = randomNeighbor(choice->x, choice->y, grid, &found);
-        if(!found) break;
-
-        neighbor->type = OBS;
-        clusterTiles[index++] = neighbor;
-    }
-
-    free(clusterTiles);
-}
-
 
     //draw grid
     for(int w = 0; w < grid.width; w++){
@@ -380,11 +434,11 @@ int main(int argc, char **argv){
 
 
     //initialize with command line arguements: robot x, robot y, dir, grid width, grid height, no. markers
-    if (argc == 7){
-        robot = initRobot(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]));
-        grid = initGrid(atoi(argv[4]), atoi(argv[5]));
-        markers = initMarkers(atoi(argv[6]), &noMarkers, grid);
-    }
+    robot = initRobot(atoi(argv[1]), atoi(argv[2]), atoi(argv[3]));
+    grid = initGrid(atoi(argv[4]), atoi(argv[5]));
+    genClusters(grid);
+    fillGaps(grid);
+    markers = initMarkers(atoi(argv[6]), &noMarkers, grid);
 
     //set marker tiles
     for (int i = 0; i < noMarkers; i++) {
@@ -393,6 +447,7 @@ int main(int argc, char **argv){
     }
 
     drawGrid(grid, robot);
+
     sleep(1000);    
     update(robot, grid);
     redrawGrid(grid, robot, markers, noMarkers);
