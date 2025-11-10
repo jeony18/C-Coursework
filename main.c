@@ -389,6 +389,13 @@ void pickUpMarker(struct Robot *robot, struct Grid grid){
     robot->markCount += 1;
 }
 
+//changes robot dir with right command
+void turnTo(struct Robot *robot, int targetDir){ 
+    while(robot->dir != targetDir){ 
+        right(robot); 
+    } 
+}
+
 // move robot from current position to target position (adjacent tile)
 void moveToAdjacent(struct Robot *robot, int targetX, int targetY, struct Grid grid) {
     if (robot->x < targetX) turnTo(robot, EAST);
